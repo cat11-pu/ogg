@@ -30,6 +30,87 @@
 
 /* A complete description of Ogg framing exists in docs/framing.html */
 
+/* Portable, alignment-safe little-endian field access. The memcpy form
+   compiles to a single load/store on every compiler that supports
+   strict aliasing, so no actual data copy happens at runtime. */
+
+#ifndef OGG_LITTLE_ENDIAN
+#  if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+#    define OGG_LITTLE_ENDIAN (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#  elif defined(__LITTLE_ENDIAN__) || defined(_WIN32) || \
+        defined(__i386__) || defined(__x86_64__) || \
+        defined(__ARMEL__) || defined(__AARCH64EL__)
+#    define OGG_LITTLE_ENDIAN 1
+#  else
+#    define OGG_LITTLE_ENDIAN 0
+#  endif
+#endif
+
+static ogg_uint32_t _ogg_read_le32(const unsigned char *p){
+#if OGG_LITTLE_ENDIAN
+  ogg_uint32_t v;
+  memcpy(&v,p,4);
+  return v;
+#else
+  return ((ogg_uint32_t)p[0])       | ((ogg_uint32_t)p[1]<<8) |
+         ((ogg_uint32_t)p[2]<<16)   | ((ogg_uint32_t)p[3]<<24);
+#endif
+}
+
+static ogg_uint64_t _ogg_read_le64(const unsigned char *p){
+#if OGG_LITTLE_ENDIAN
+  ogg_uint64_t v;
+  memcpy(&v,p,8);
+  return v;
+#else
+  return (ogg_uint64_t)_ogg_read_le32(p) |
+         ((ogg_uint64_t)_ogg_read_le32(p+4)<<32);
+#endif
+}
+
+static void _ogg_write_le32(unsigned char *p,ogg_uint32_t v){
+#if OGG_LITTLE_ENDIAN
+  memcpy(p,&v,4);
+#else
+  p[0]=(unsigned char)(v&0xff);
+  p[1]=(unsigned char)((v>>8)&0xff);
+  p[2]=(unsigned char)((v>>16)&0xff);
+  p[3]=(unsigned char)((v>>24)&0xff);
+#endif
+}
+
+/* Byte-swap a 32-bit word; compiles to a native bswap/rol instruction. */
+static ogg_uint32_t _ogg_bswap32(ogg_uint32_t v){
+  return ((v&0x000000ffU)<<24) | ((v&0x0000ff00U)<<8) |
+         ((v&0x00ff0000U)>>8)  | ((v&0xff000000U)>>24);
+}
+
+/* Sum byte values in a segment table (each byte 0..255, max 255 of
+   them). Bytes are widened into 32-bit lanes with a mask-and-shift so
+   each lane has 24 bits of headroom (255*255 < 2^24); the two halves
+   are folded at the end. */
+static long _ogg_segment_sum(const unsigned char *segments,int n){
+  long sum=0;
+  int i=0;
+#if OGG_LITTLE_ENDIAN
+  const ogg_uint64_t byte_mask=
+    ((ogg_uint64_t)0x00ff00ff<<32)|(ogg_uint64_t)0x00ff00ff;
+  ogg_uint64_t acc=0;
+  for(;i+8<=n;i+=8){
+    ogg_uint64_t v;
+    memcpy(&v,segments+i,8);
+    /* merge adjacent bytes into 16-bit lanes first, then accumulate */
+    acc+=(v&byte_mask)+((v>>8)&byte_mask);
+  }
+  sum=(long)((acc&(ogg_uint64_t)0xffff)+
+             ((acc>>16)&(ogg_uint64_t)0xffff)+
+             ((acc>>32)&(ogg_uint64_t)0xffff)+
+             ((acc>>48)&(ogg_uint64_t)0xffff));
+#endif
+  for(;i<n;i++) sum+=segments[i];
+  return sum;
+}
+
 int ogg_page_version(const ogg_page *og){
   return((int)(og->header[4]));
 }
@@ -47,30 +128,15 @@ int ogg_page_eos(const ogg_page *og){
 }
 
 ogg_int64_t ogg_page_granulepos(const ogg_page *og){
-  unsigned char *page=og->header;
-  ogg_uint64_t granulepos=page[13]&(0xff);
-  granulepos= (granulepos<<8)|(page[12]&0xff);
-  granulepos= (granulepos<<8)|(page[11]&0xff);
-  granulepos= (granulepos<<8)|(page[10]&0xff);
-  granulepos= (granulepos<<8)|(page[9]&0xff);
-  granulepos= (granulepos<<8)|(page[8]&0xff);
-  granulepos= (granulepos<<8)|(page[7]&0xff);
-  granulepos= (granulepos<<8)|(page[6]&0xff);
-  return((ogg_int64_t)granulepos);
+  return((ogg_int64_t)_ogg_read_le64(og->header+6));
 }
 
 int ogg_page_serialno(const ogg_page *og){
-  return((int)((ogg_uint32_t)og->header[14]) |
-              ((ogg_uint32_t)og->header[15]<<8) |
-              ((ogg_uint32_t)og->header[16]<<16) |
-              ((ogg_uint32_t)og->header[17]<<24));
+  return((int)_ogg_read_le32(og->header+14));
 }
 
 long ogg_page_pageno(const ogg_page *og){
-  return((long)((ogg_uint32_t)og->header[18]) |
-               ((ogg_uint32_t)og->header[19]<<8) |
-               ((ogg_uint32_t)og->header[20]<<16) |
-               ((ogg_uint32_t)og->header[21]<<24));
+  return((long)_ogg_read_le32(og->header+18));
 }
 
 
@@ -127,6 +193,7 @@ static void _ogg_crc_init(){
 #endif
 
 #include "crctable.h"
+#include "crctable16.h"
 
 /* init the encode/decode logical stream state */
 
@@ -231,25 +298,60 @@ static int _os_lacing_expand(ogg_stream_state *os,long needed){
 }
 
 /* checksum the page */
-/* Direct table CRC; note that this will be faster in the future if we
-   perform the checksum simultaneously with other copies */
+/* Slice-by-16 direct table CRC: each iteration processes sixteen bytes
+   with one unaligned 32-bit load per word and sixteen independent table
+   lookups (two dependency chains), cutting per-byte branches and loop
+   overhead versus slice-by-8. */
 
-static ogg_uint32_t _os_update_crc(ogg_uint32_t crc, unsigned char *buffer, int size){
-  while (size>=8){
-    crc^=((ogg_uint32_t)buffer[0]<<24)|((ogg_uint32_t)buffer[1]<<16)|((ogg_uint32_t)buffer[2]<<8)|((ogg_uint32_t)buffer[3]);
+static ogg_uint32_t _os_update_crc(ogg_uint32_t crc,
+                                   const unsigned char *buffer, long size){
+  while(size>=16){
+    /* the CRC is MSB-first; load each word with byte 0 in the high
+       byte, matching the byte-wise table indexing */
+    ogg_uint32_t w0=_ogg_bswap32(_ogg_read_le32(buffer)) ^ crc;
+    ogg_uint32_t w1=_ogg_bswap32(_ogg_read_le32(buffer+4));
+    ogg_uint32_t w2=_ogg_bswap32(_ogg_read_le32(buffer+8));
+    ogg_uint32_t w3=_ogg_bswap32(_ogg_read_le32(buffer+12));
 
-    crc=crc_lookup[7][ crc>>24      ]^crc_lookup[6][(crc>>16)&0xFF]^
-        crc_lookup[5][(crc>> 8)&0xFF]^crc_lookup[4][ crc     &0xFF]^
-        crc_lookup[3][buffer[4]     ]^crc_lookup[2][buffer[5]     ]^
-        crc_lookup[1][buffer[6]     ]^crc_lookup[0][buffer[7]     ];
+    crc= crc_lookup16[15][(w0>>24)&0xff] ^ crc_lookup16[14][(w0>>16)&0xff] ^
+         crc_lookup16[13][(w0>> 8)&0xff] ^ crc_lookup16[12][ w0      &0xff] ^
+         crc_lookup16[11][(w1>>24)&0xff] ^ crc_lookup16[10][(w1>>16)&0xff] ^
+         crc_lookup16[ 9][(w1>> 8)&0xff] ^ crc_lookup16[ 8][ w1      &0xff] ^
+         crc_lookup16[ 7][(w2>>24)&0xff] ^ crc_lookup16[ 6][(w2>>16)&0xff] ^
+         crc_lookup16[ 5][(w2>> 8)&0xff] ^ crc_lookup16[ 4][ w2      &0xff] ^
+         crc_lookup16[ 3][(w3>>24)&0xff] ^ crc_lookup16[ 2][(w3>>16)&0xff] ^
+         crc_lookup16[ 1][(w3>> 8)&0xff] ^ crc_lookup16[ 0][ w3      &0xff];
 
-    buffer+=8;
-    size-=8;
+    buffer+=16;
+    size-=16;
   }
 
-  while (size--)
+  while(size--)
     crc=(crc<<8)^crc_lookup[0][((crc >> 24)&0xff)^*buffer++];
   return crc;
+}
+
+/* Verify a buffered page without mutating it. The CRC field at bytes
+   22..25 is specified to be treated as zero; computing over three
+   spans avoids the save/zero/restore memcpy/memset round trip used on
+   the general-purpose set path. The four zero bytes still have to be
+   fed through the CRC state machine, which the zero-index table entry
+   does branch-free. */
+static int _ogg_page_crc_verify(const unsigned char *page,
+                                long header_len,long body_len){
+  ogg_uint32_t crc_reg=0;
+  ogg_uint32_t stored;
+
+  crc_reg=_os_update_crc(crc_reg,page,22);
+  crc_reg=(crc_reg<<8)^crc_lookup[0][(crc_reg>>24)&0xff];
+  crc_reg=(crc_reg<<8)^crc_lookup[0][(crc_reg>>24)&0xff];
+  crc_reg=(crc_reg<<8)^crc_lookup[0][(crc_reg>>24)&0xff];
+  crc_reg=(crc_reg<<8)^crc_lookup[0][(crc_reg>>24)&0xff];
+  crc_reg=_os_update_crc(crc_reg,page+26,header_len-26);
+  crc_reg=_os_update_crc(crc_reg,page+header_len,body_len);
+
+  stored=_ogg_read_le32(page+22);
+  return stored==crc_reg;
 }
 
 void ogg_page_checksum_set(ogg_page *og){
@@ -257,18 +359,12 @@ void ogg_page_checksum_set(ogg_page *og){
     ogg_uint32_t crc_reg=0;
 
     /* safety; needed for API behavior, but not framing code */
-    og->header[22]=0;
-    og->header[23]=0;
-    og->header[24]=0;
-    og->header[25]=0;
+    _ogg_write_le32(og->header+22,0);
 
     crc_reg=_os_update_crc(crc_reg,og->header,og->header_len);
     crc_reg=_os_update_crc(crc_reg,og->body,og->body_len);
 
-    og->header[22]=(unsigned char)(crc_reg&0xff);
-    og->header[23]=(unsigned char)((crc_reg>>8)&0xff);
-    og->header[24]=(unsigned char)((crc_reg>>16)&0xff);
-    og->header[25]=(unsigned char)((crc_reg>>24)&0xff);
+    _ogg_write_le32(og->header+22,crc_reg);
   }
 }
 
@@ -650,19 +746,17 @@ long ogg_sync_pageseek(ogg_sync_state *oy,ogg_page *og){
   bytes=oy->fill-oy->returned;
 
   if(oy->headerbytes==0){
-    int headerbytes,i;
+    int headerbytes;
     if(bytes<27)return(0); /* not enough for a header */
 
-    /* verify capture pattern */
-    if(memcmp(page,"OggS",4))goto sync_fail;
+    /* verify capture pattern "OggS" as one 32-bit compare */
+    if(_ogg_read_le32(page)!=0x5367674fU)goto sync_fail;
 
     headerbytes=page[26]+27;
     if(bytes<headerbytes)return(0); /* not enough for header + seg table */
 
     /* count up body length in the segment table */
-
-    for(i=0;i<page[26];i++)
-      oy->bodybytes+=page[27+i];
+    oy->bodybytes+=_ogg_segment_sum(page+27,page[26]);
     oy->headerbytes=headerbytes;
   }
 
@@ -670,27 +764,7 @@ long ogg_sync_pageseek(ogg_sync_state *oy,ogg_page *og){
 
   /* The whole test page is buffered.  Verify the checksum */
   {
-    /* Grab the checksum bytes, set the header field to zero */
-    char chksum[4];
-    ogg_page log;
-
-    memcpy(chksum,page+22,4);
-    memset(page+22,0,4);
-
-    /* set up a temp page struct and recompute the checksum */
-    log.header=page;
-    log.header_len=oy->headerbytes;
-    log.body=page+oy->headerbytes;
-    log.body_len=oy->bodybytes;
-    ogg_page_checksum_set(&log);
-
-    /* Compare */
-    if(memcmp(chksum,page+22,4)){
-      /* D'oh.  Mismatch! Corrupt page (or miscapture and not a page
-         at all) */
-      /* replace the computed checksum with the one actually read in */
-      memcpy(page+22,chksum,4);
-
+    if(!_ogg_page_crc_verify(page,oy->headerbytes,oy->bodybytes)){
 #ifndef DISABLE_CRC
       /* Bad checksum. Lose sync */
       goto sync_fail;
@@ -778,13 +852,13 @@ int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og){
   long           bodysize=og->body_len;
   int            segptr=0;
 
-  int version=ogg_page_version(og);
-  int continued=ogg_page_continued(og);
-  int bos=ogg_page_bos(og);
-  int eos=ogg_page_eos(og);
-  ogg_int64_t granulepos=ogg_page_granulepos(og);
-  int serialno=ogg_page_serialno(og);
-  long pageno=ogg_page_pageno(og);
+  int version=header[4];
+  int continued=header[5]&0x01;
+  int bos=header[5]&0x02;
+  int eos=header[5]&0x04;
+  ogg_int64_t granulepos=(ogg_int64_t)_ogg_read_le64(header+6);
+  int serialno=(int)_ogg_read_le32(header+14);
+  long pageno=(long)_ogg_read_le32(header+18);
   int segments=header[26];
 
   if(ogg_stream_check(os)) return -1;

@@ -51,3 +51,10 @@ CMakeSettings.json
 
 .vs/
 .vscode/
+
+# benchmark binaries and captured outputs
+bench/bench-base
+bench/bench-opt
+bench/base.txt
+bench/opt.txt
+bench/time-*.txt

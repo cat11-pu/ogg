@@ -76,6 +76,7 @@ set(OGG_SOURCES
     src/bitwise.c
     src/framing.c
     src/crctable.h
+    src/crctable16.h
 )
 
 if(WIN32 AND BUILD_SHARED_LIBS)
