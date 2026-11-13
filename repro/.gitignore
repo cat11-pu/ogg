@@ -1,0 +1,8 @@
+# binaries
+gen_stream
+corrupt_stream
+decode_naive
+decode_robust
+
+# generated bitstreams
+*.ogg
