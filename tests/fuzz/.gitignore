@@ -1,0 +1,8 @@
+# Sanitizer driver binaries
+fuzz_parse
+fuzz_parse_nocrc
+
+# Generated corpus and run artifacts (regenerate via generate.py / run_all.py)
+cases/
+out/
+minimal/
