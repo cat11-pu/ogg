@@ -112,6 +112,27 @@ typedef struct {
   int bodybytes;
 } ogg_sync_state;
 
+/* ogg_seekpoint describes one physical page in a seek index.  offset is
+   the byte offset of the page's "OggS" capture pattern in the source
+   byte stream.  granulepos is -1 for pages on which no packet ends. */
+
+typedef struct {
+  ogg_int64_t offset;
+  ogg_int64_t granulepos;
+  long        serialno;
+  long        pageno;
+} ogg_seekpoint;
+
+/* A page index used for granulepos (timestamp) based seeking.  Feed it
+   pages in physical stream order with ogg_seek_index_add_page(), or scan
+   a complete in-memory stream with ogg_seek_index_build(). */
+
+typedef struct {
+  ogg_seekpoint *points;
+  size_t         count;
+  size_t         capacity;
+} ogg_seek_index;
+
 /* Ogg BITSTREAM PRIMITIVES: bitstream ************************/
 
 extern void  oggpack_writeinit(oggpack_buffer *b);
@@ -177,6 +198,26 @@ extern int      ogg_sync_pageout(ogg_sync_state *oy, ogg_page *og);
 extern int      ogg_stream_pagein(ogg_stream_state *os, ogg_page *og);
 extern int      ogg_stream_packetout(ogg_stream_state *os,ogg_packet *op);
 extern int      ogg_stream_packetpeek(ogg_stream_state *os,ogg_packet *op);
+
+/* Ogg BITSTREAM PRIMITIVES: timestamp seeking *****************/
+
+extern int      ogg_seek_index_init(ogg_seek_index *idx);
+extern void     ogg_seek_index_clear(ogg_seek_index *idx);
+extern int      ogg_seek_index_add_page(ogg_seek_index *idx,
+                                        ogg_int64_t offset,
+                                        const ogg_page *og);
+extern int      ogg_seek_index_add(ogg_seek_index *idx,
+                                   ogg_int64_t offset,
+                                   ogg_int64_t granulepos,
+                                   long serialno,
+                                   long pageno);
+extern int      ogg_seek_index_build(ogg_seek_index *idx,
+                                     const void *data,
+                                     size_t bytes);
+extern int      ogg_seek_index_find(const ogg_seek_index *idx,
+                                    long serialno,
+                                    ogg_int64_t target_granulepos,
+                                    ogg_seekpoint *point);
 
 /* Ogg BITSTREAM PRIMITIVES: general ***************************/
 

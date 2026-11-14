@@ -16,6 +16,7 @@ dist_apidoc_DATA = bitpacking.html datastructures.html decoding.html encoding.ht
 	ogg_sync_buffer.html ogg_sync_check.html ogg_sync_clear.html ogg_sync_destroy.html\
 	ogg_sync_init.html ogg_sync_pageout.html ogg_sync_pageseek.html\
 	ogg_sync_reset.html ogg_sync_state.html ogg_sync_wrote.html\
+	ogg_seek_index.html\
 	oggpack_adv.html oggpack_adv1.html oggpack_bits.html\
 	oggpack_buffer.html oggpack_bytes.html oggpack_get_buffer.html\
 	oggpack_look.html oggpack_look1.html oggpack_read.html\
@@ -36,4 +37,3 @@ update-doc-version:
 			mv $$f.tmp $$f;							\
 		fi;									\
 	done;
-

@@ -76,5 +76,11 @@ ogg_page_serialno
 ogg_page_pageno
 ogg_page_packets
 ogg_packet_clear
+;
+ogg_seek_index_init
+ogg_seek_index_clear
+ogg_seek_index_add_page
+ogg_seek_index_add
+ogg_seek_index_build
+ogg_seek_index_find
                                                         
-

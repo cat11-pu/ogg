@@ -1,0 +1,150 @@
+<html>
+
+<head>
+<title>libogg - timestamp seeking</title>
+<link rel=stylesheet href="style.css" type="text/css">
+</head>
+
+<body bgcolor=white text=black link="#5555ff" alink="#5555ff" vlink="#5555ff">
+<table border=0 width=100%>
+<tr>
+<td><p class=tiny>libogg documentation</p></td>
+<td align=right><p class=tiny>libogg release 1.3.6 - 20250616</p></td>
+</tr>
+</table>
+
+<h1>Timestamp seeking</h1>
+
+<p><i>declared in "ogg/ogg.h";</i></p>
+
+<p>Ogg exposes time through the granulepos stored in each page.  An
+<a href="ogg_seek_index.html">ogg_seek_index</a> records the byte offset and
+granulepos of pages while they are read sequentially.  Once an index exists,
+<code>ogg_seek_index_find()</code> returns the byte offset at which a reader
+should resume in order to reach a requested granulepos.</p>
+
+<p>libogg does not perform file I/O.  The application seeks its own source to
+the returned offset, resets its <a href="ogg_sync_state.html">ogg_sync_state</a>
+and continues with <a href="ogg_sync_pageout.html">ogg_sync_pageout()</a>.</p>
+
+<table border=0 color=black cellspacing=0 cellpadding=7>
+<tr bgcolor=#cccccc>
+	<td>
+<pre><b>
+typedef struct {
+  ogg_int64_t offset;
+  ogg_int64_t granulepos;
+  long        serialno;
+  long        pageno;
+} ogg_seekpoint;
+
+typedef struct {
+  ogg_seekpoint *points;
+  size_t         count;
+  size_t         capacity;
+} ogg_seek_index;
+
+int  ogg_seek_index_init(ogg_seek_index *idx);
+void ogg_seek_index_clear(ogg_seek_index *idx);
+int  ogg_seek_index_add_page(ogg_seek_index *idx,
+                             ogg_int64_t offset,
+                             const ogg_page *og);
+int  ogg_seek_index_add(ogg_seek_index *idx,
+                        ogg_int64_t offset,
+                        ogg_int64_t granulepos,
+                        long serialno,
+                        long pageno);
+int  ogg_seek_index_build(ogg_seek_index *idx,
+                          const void *data,
+                          size_t bytes);
+int  ogg_seek_index_find(const ogg_seek_index *idx,
+                         long serialno,
+                         ogg_int64_t target_granulepos,
+                         ogg_seekpoint *point);
+</b></pre>
+	</td>
+</tr>
+</table>
+
+<h3>Building an index</h3>
+
+<p><code>ogg_seek_index_build()</code> is a convenience for a complete
+in-memory stream.  It scans and CRC-checks pages, skips leading junk and
+ignores a truncated tail.  For streaming or large files, call
+<code>ogg_seek_index_add_page()</code> for every page returned by
+<code>ogg_sync_pageout()</code>, passing the absolute byte offset of that
+page's <code>OggS</code> capture pattern.  Offsets must be strictly
+increasing.  <code>ogg_seek_index_add()</code> accepts already-parsed page
+fields.</p>
+
+<p>Both building functions return 0 on success and -1 on invalid arguments
+or allocation failure.  <code>ogg_seek_index_build()</code> replaces the
+index atomically; a failed build leaves the old index untouched.</p>
+
+<h3>Lookup rules</h3>
+
+<p>The index is per logical stream: pass the stream's serial number so that
+interleaved streams with independent granulepos timelines are not mixed.
+Pages with granulepos -1 are retained for offset validation but do not
+participate in timestamp comparison.</p>
+
+<blockquote>
+<li>Exact hit: the first page whose granulepos equals the target is
+returned.</li>
+<li>Between pages: the last page at or below the target is returned.  The
+next timed page is the one that first passes the target, so the start is at
+most one timed page early.</li>
+<li>Before the first timed page: the first physical page of that stream is
+returned, preserving headers and BOS state.</li>
+<li>At or after the last timed page: the last timed page is returned.</li>
+<li>A stream containing no timed pages: its first physical page is
+returned.</li>
+<li>Unknown serial or an empty index: 0 is returned and
+<code>point</code> is untouched.  Success returns 1; invalid arguments
+return -1.</li>
+</blockquote>
+
+<p>The returned offset is always the capture-pattern boundary recorded when
+the page passed CRC validation.  Reading from that offset therefore yields
+byte-identical pages to a sequential read starting at the same page.</p>
+
+<h3>Example</h3>
+
+<pre>
+ogg_seek_index index;
+ogg_seekpoint point;
+
+ogg_seek_index_init(&amp;index);
+/* While reading sequentially: */
+ogg_seek_index_add_page(&amp;index, page_offset, &amp;og);
+
+if(ogg_seek_index_find(&amp;index, serialno, target_granulepos, &amp;point)==1){
+  fseeko(source, (off_t)point.offset, SEEK_SET);
+  ogg_sync_reset(&amp;sync);
+  /* Feed bytes from the new position and continue ogg_sync_pageout(). */
+}
+
+ogg_seek_index_clear(&amp;index);
+</pre>
+
+<h3>Complexity</h3>
+
+<p>Memory is one <code>ogg_seekpoint</code> per page.  Insertion is
+amortised constant time.  Lookup is a linear scan restricted to the selected
+serial number; it does not require the index to contain only one stream.</p>
+
+<br><br>
+<hr noshade>
+<table border=0 width=100%>
+<tr valign=top>
+<td><p class=tiny>copyright &copy; 2000-2026 Xiph.Org Foundation</p></td>
+<td align=right><p class=tiny><a href="http://www.xiph.org/ogg/">Ogg Container Format</a></p></td>
+</tr><tr>
+<td><p class=tiny>libogg documentation</p></td>
+<td align=right><p class=tiny>libogg release 1.3.6 - 20250616</p></td>
+</tr>
+</table>
+
+</body>
+
+</html>
