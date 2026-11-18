@@ -27,6 +27,13 @@ Directory:
 
 - `win32` Win32 projects and build automation
 
+## Timestamp seeking ##
+
+`ogg_seek_index_*` provides page-level random access by granulepos without
+adding I/O to libogg.  It supports interleaved and chained logical streams.
+See [seek/README.md](seek/README.md) for the API, boundary rules and
+byte-exact consistency data.
+
 ## Contact ##
 
 The Ogg homepage is located at https://www.xiph.org/ogg/ .

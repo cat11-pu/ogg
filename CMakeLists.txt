@@ -13,6 +13,7 @@ include(CMakePackageConfigHelpers)
 
 # Build options
 option(BUILD_SHARED_LIBS "Build shared library" OFF)
+option(BUILD_TESTING "Build tests" ON)
 if(APPLE)
     option(BUILD_FRAMEWORK "Build Framework bundle for OSX" OFF)
 endif()
@@ -75,6 +76,7 @@ set(OGG_HEADERS
 set(OGG_SOURCES
     src/bitwise.c
     src/framing.c
+    src/seek.c
     src/crctable.h
 )
 
@@ -179,6 +181,8 @@ if(INSTALL_DOCS)
 endif()
 
 if(BUILD_TESTING)
+    enable_testing()
+
     add_executable(test_bitwise src/bitwise.c ${OGG_HEADERS})
     target_compile_definitions(test_bitwise PRIVATE _V_SELFTEST)
     target_include_directories(test_bitwise PRIVATE
@@ -194,6 +198,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_BINARY_DIR}/include
     )
     add_test(NAME test_framing COMMAND $<TARGET_FILE:test_framing>)
+
+    add_executable(test_seek src/seek_test.c ${OGG_HEADERS})
+    target_link_libraries(test_seek PRIVATE ogg)
+    add_test(NAME test_seek COMMAND $<TARGET_FILE:test_seek>)
 endif()
 
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})

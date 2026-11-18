@@ -1,5 +1,6 @@
 Version 1.3.6 (2025 June 16)
 
+ * Add granulepos-based page index and lookup for timestamp seeking.
  * Update minimum cmake version to 3.6
    This fixes incompatibility with cmake >= 4.0
  * Fix UBsan issues
@@ -119,4 +120,3 @@ Version 1.0 (2002 July 19)
  * First stable release
  * little-endian bitpacker routines for Vorbis
  * basic Ogg bitstream sync and coding support
-

@@ -281,6 +281,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\src\bitwise.c" />
     <ClCompile Include="..\..\src\framing.c" />
+    <ClCompile Include="..\..\src\seek.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\ogg\ogg.h" />
