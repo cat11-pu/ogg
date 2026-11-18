@@ -158,6 +158,23 @@ int ogg_stream_check(ogg_stream_state *os){
   return 0;
 }
 
+/* Record why a page was rejected.  The offset is relative to the start of
+   the page supplied to ogg_stream_pagein(); callers can map it back to a
+   stream position themselves. */
+static int _os_fail(ogg_stream_state *os,int code,long offset){
+  os->errcode=code;
+  os->erroff=offset;
+  return -1;
+}
+
+int ogg_stream_errcode(const ogg_stream_state *os){
+  return os ? os->errcode : OGG_ERR_BAD_HEADER;
+}
+
+long ogg_stream_erroff(const ogg_stream_state *os){
+  return os ? os->erroff : -1;
+}
+
 /* _clear does not free os, only the non-flat storage within */
 int ogg_stream_clear(ogg_stream_state *os){
   if(os){
@@ -182,6 +199,10 @@ int ogg_stream_destroy(ogg_stream_state *os){
    what's happening fairly clear */
 
 static int _os_body_expand(ogg_stream_state *os,long needed){
+  if(needed<0){
+    ogg_stream_clear(os);
+    return -1;
+  }
   if(os->body_storage-needed<=os->body_fill){
     long body_storage;
     void *ret;
@@ -203,6 +224,10 @@ static int _os_body_expand(ogg_stream_state *os,long needed){
 }
 
 static int _os_lacing_expand(ogg_stream_state *os,long needed){
+  if(needed<0){
+    ogg_stream_clear(os);
+    return -1;
+  }
   if(os->lacing_storage-needed<=os->lacing_fill){
     long lacing_storage;
     void *ret;
@@ -778,16 +803,56 @@ int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og){
   long           bodysize=og->body_len;
   int            segptr=0;
 
-  int version=ogg_page_version(og);
-  int continued=ogg_page_continued(og);
-  int bos=ogg_page_bos(og);
-  int eos=ogg_page_eos(og);
-  ogg_int64_t granulepos=ogg_page_granulepos(og);
-  int serialno=ogg_page_serialno(og);
-  long pageno=ogg_page_pageno(og);
-  int segments=header[26];
+  int version,continued,bos,eos,serialno,segments;
+  ogg_int64_t granulepos;
+  long pageno,segsum;
 
-  if(ogg_stream_check(os)) return -1;
+  if(ogg_stream_check(os)) return _os_fail(os,OGG_ERR_BAD_HEADER,-1);
+
+  /* ---- fully validate the page before touching any stream state ----
+     Every rejection returns -1 with an error code and a byte offset
+     relative to the page, so a malformed page can never drive the
+     bookkeeping or the memcpy below out of bounds. */
+  os->errcode=OGG_ERR_NONE;
+  os->erroff=0;
+
+  if(!header || og->header_len<27 || bodysize<0)
+    return _os_fail(os,OGG_ERR_BAD_HEADER,0);
+
+  if(memcmp(header,"OggS",4))
+    return _os_fail(os,OGG_ERR_BAD_HEADER,0);
+
+  segments=header[26];
+  if(og->header_len<27+segments)
+    return _os_fail(os,OGG_ERR_TRUNCATED,26);
+
+  version=ogg_page_version(og);
+  if(version!=0)
+    return _os_fail(os,OGG_ERR_BAD_VERSION,4);
+
+  serialno=ogg_page_serialno(og);
+  if(serialno!=os->serialno)
+    return _os_fail(os,OGG_ERR_SERIAL_MISMATCH,14);
+
+  /* the segment table must describe exactly the body bytes present */
+  segsum=0;
+  {
+    int i;
+    for(i=0;i<segments;i++){
+      long val=header[27+i];
+      if(segsum > LONG_MAX-val)
+        return _os_fail(os,OGG_ERR_BODY_MISMATCH,27+i);
+      segsum+=val;
+    }
+  }
+  if(segsum!=bodysize)
+    return _os_fail(os,OGG_ERR_BODY_MISMATCH,27);
+
+  continued=ogg_page_continued(og);
+  bos=ogg_page_bos(og);
+  eos=ogg_page_eos(og);
+  granulepos=ogg_page_granulepos(og);
+  pageno=ogg_page_pageno(og);
 
   /* clean up 'returned data' */
   {
@@ -816,19 +881,23 @@ int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og){
     }
   }
 
-  /* check the serial number */
-  if(serialno!=os->serialno)return(-1);
-  if(version>0)return(-1);
-
-  if(_os_lacing_expand(os,segments+1)) return -1;
+  if(_os_lacing_expand(os,segments+1))
+    return _os_fail(os,OGG_ERR_ALLOC,-1);
 
   /* are we in sequence? */
   if(pageno!=os->pageno){
     int i;
 
     /* unroll previous partial packet (if any) */
-    for(i=os->lacing_packet;i<os->lacing_fill;i++)
-      os->body_fill-=os->lacing_vals[i]&0xff;
+    for(i=os->lacing_packet;i<os->lacing_fill;i++){
+      long val=os->lacing_vals[i]&0xff;
+      if(val>os->body_fill){
+        /* defensive: bookkeeping was inconsistent; never underflow */
+        os->body_fill=0;
+        break;
+      }
+      os->body_fill-=val;
+    }
     os->lacing_fill=os->lacing_packet;
 
     /* make a note of dropped data in segment table */
@@ -844,6 +913,12 @@ int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og){
     if(os->lacing_fill<1 ||
        (os->lacing_vals[os->lacing_fill-1]&0xff)<255 ||
        os->lacing_vals[os->lacing_fill-1]==0x400){
+      long skip=0;
+      int i;
+      for(i=0;i<segments;i++)
+        skip+=header[27+i];
+      if(skip>bodysize)
+        return _os_fail(os,OGG_ERR_CONTINUATION,27);
       bos=0;
       for(;segptr<segments;segptr++){
         int val=header[27+segptr];
@@ -858,7 +933,8 @@ int ogg_stream_pagein(ogg_stream_state *os, ogg_page *og){
   }
 
   if(bodysize){
-    if(_os_body_expand(os,bodysize)) return -1;
+    if(_os_body_expand(os,bodysize))
+      return _os_fail(os,OGG_ERR_ALLOC,-1);
     memcpy(os->body_data+os->body_fill,body,bodysize);
     os->body_fill+=bodysize;
   }

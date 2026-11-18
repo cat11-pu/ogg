@@ -1,0 +1,4 @@
+=== baseline (pre-fix) fuzz_random 2000 seed=1 ===
+==865752==ERROR: AddressSanitizer: negative-size-param: (size=-2)
+SUMMARY: AddressSanitizer: negative-size-param /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29 in memcpy
+exit=1 (crash)

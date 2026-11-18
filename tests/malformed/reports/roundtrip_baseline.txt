@@ -1,0 +1,4 @@
+packet no=0 bos=256 eos=0 gran=0 bytes=17 hash=99b644c33067963e
+packet no=1 bos=0 eos=0 gran=-1 bytes=600 hash=8be8d45db5a525d1
+packet no=2 bos=0 eos=0 gran=627 bytes=10 hash=725f9aa5277a1c1c
+packets=3

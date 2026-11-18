@@ -1,0 +1,9 @@
+=== BASELINE (unfixed) ASan run ===
+--- corpus/continue_orphan_overrun.bin
+==855129==ERROR: AddressSanitizer: negative-size-param: (size=-710)
+SUMMARY: AddressSanitizer: negative-size-param /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29 in memcpy
+--- corpus/continue_skip_underflow.bin
+==855132==ERROR: AddressSanitizer: negative-size-param: (size=-1021)
+SUMMARY: AddressSanitizer: negative-size-param /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29 in memcpy
+==855134==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x7751f59e4200 at pc 0x56ce2c5a80c5 bp 0x7ffc70d249b0 sp 0x7ffc70d249a0
+SUMMARY: AddressSanitizer: heap-buffer-overflow /home/cat/gsb/uid4090/tests/malformed/poc_stateful.c:63 in poc_lacing_overread

@@ -65,6 +65,8 @@ ogg_stream_destroy
 ogg_stream_eos
 ogg_stream_pageout_fill
 ogg_stream_flush_fill
+ogg_stream_errcode
+ogg_stream_erroff
 ;
 ogg_page_checksum_set
 ogg_page_version
@@ -77,4 +79,3 @@ ogg_page_pageno
 ogg_page_packets
 ogg_packet_clear
                                                         
-

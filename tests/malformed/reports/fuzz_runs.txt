@@ -1,0 +1,7 @@
+iterations=2000 pages=595 accepted=1025 rejected=3945 packets=89976 holes=1810
+iterations=2000 pages=568 accepted=1002 rejected=3865 packets=87273 holes=1793
+iterations=2000 pages=630 accepted=1065 rejected=4098 packets=96657 holes=1834
+iterations=2000 pages=566 accepted=1049 rejected=3824 packets=96319 holes=1767
+iterations=2000 pages=561 accepted=1034 rejected=3833 packets=101085 holes=1767
+iterations=2000 pages=604 accepted=1062 rejected=3918 packets=97226 holes=1793
+iterations=2000 pages=575 accepted=1043 rejected=3886 packets=96697 holes=1783

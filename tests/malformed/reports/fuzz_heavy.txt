@@ -1,0 +1,1 @@
+iterations=10000 pages=2802 accepted=5030 rejected=19584 packets=458259 holes=8898

@@ -1,0 +1,9 @@
+=== FIXED build: full corpus, both pipelines ===
+corpus_runs=28 crashes=0
+
+=== stateful PoC (previously 1 OOB read + 2 memcpy crashes) ===
+lacing-overread pagein rc=-1 body_fill=0
+lacing-overread packetout rc=0 bytes=0
+seq-underflow pagein rc=-1 body_fill=10 lacing_fill=1
+poc completed
+poc exit=0

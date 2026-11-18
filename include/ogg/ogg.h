@@ -81,6 +81,9 @@ typedef struct {
                              layer) also knows about the gap */
   ogg_int64_t   granulepos;
 
+  int           errcode;   /* last ogg_stream_pagein() rejection reason */
+  long          erroff;    /* byte offset of the fault inside the page */
+
 } ogg_stream_state;
 
 /* ogg_packet is used to encapsulate the data and metadata belonging
@@ -111,6 +114,18 @@ typedef struct {
   int headerbytes;
   int bodybytes;
 } ogg_sync_state;
+
+/* Decode error codes reported through ogg_stream_errcode().  A negative
+   ogg_stream_pagein() return sets one of these together with a byte offset
+   (relative to the rejected page) available via ogg_stream_erroff(). */
+#define OGG_ERR_NONE              0  /* no error */
+#define OGG_ERR_BAD_HEADER       -1  /* too short / not an OggS capture */
+#define OGG_ERR_BAD_VERSION      -2  /* unsupported stream structure version */
+#define OGG_ERR_SERIAL_MISMATCH  -3  /* page serial does not match stream */
+#define OGG_ERR_TRUNCATED        -4  /* header/segment table exceeds page */
+#define OGG_ERR_BODY_MISMATCH    -5  /* segment table length != body bytes */
+#define OGG_ERR_CONTINUATION     -6  /* continued page with nothing pending */
+#define OGG_ERR_ALLOC            -7  /* storage allocation failed */
 
 /* Ogg BITSTREAM PRIMITIVES: bitstream ************************/
 
@@ -187,6 +202,10 @@ extern int      ogg_stream_reset_serialno(ogg_stream_state *os,int serialno);
 extern int      ogg_stream_destroy(ogg_stream_state *os);
 extern int      ogg_stream_check(ogg_stream_state *os);
 extern int      ogg_stream_eos(ogg_stream_state *os);
+
+/* diagnostics for the most recent ogg_stream_pagein() call */
+extern int      ogg_stream_errcode(const ogg_stream_state *os);
+extern long     ogg_stream_erroff(const ogg_stream_state *os);
 
 extern void     ogg_page_checksum_set(ogg_page *og);
 
