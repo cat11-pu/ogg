@@ -9,13 +9,21 @@ libogg_la_LDFLAGS = -no-undefined -version-info @LIB_CURRENT@:@LIB_REVISION@:@LI
 
 # build and run the self tests on 'make check'
 
-noinst_PROGRAMS = test_bitwise test_framing
+noinst_PROGRAMS = test_bitwise test_framing test_malformed \
+	test_valid_reference
 
 test_bitwise_SOURCES = bitwise.c
 test_bitwise_CFLAGS = -D_V_SELFTEST
 
 test_framing_SOURCES = framing.c crctable.h
 test_framing_CFLAGS = -D_V_SELFTEST
+
+test_malformed_SOURCES = test_malformed.c test_ogg_common.c test_ogg_common.h
+test_malformed_LDADD = libogg.la
+
+test_valid_reference_SOURCES = test_valid_reference.c test_ogg_common.c \
+	test_ogg_common.h
+test_valid_reference_LDADD = libogg.la
 
 TEST_ENV = @TEST_ENV@
 LOG_COMPILER=$(LIBTOOL) --mode=execute $(VALGRIND) $(TEST_ENV)

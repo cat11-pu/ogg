@@ -150,6 +150,25 @@ If build with configuration type "Release", then:
 
     ctest -C Release
 
+### Container framing properties ###
+
+`test_malformed` runs 200 deterministic malformed streams covering page
+truncation, bad page sequence numbers, duplicate pages, and orphaned or
+truncated continuation pages. `test_valid_reference` builds 50 valid streams
+and compares every synced page and decoded packet byte-for-byte against an
+independent reference parser.
+
+For the full crash, out-of-bounds, and leak check, configure a separate ASan
+build and run the whole suite:
+
+    cmake -S . -B build-asan -DBUILD_TESTING=ON \
+      -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
+      -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+    cmake --build build-asan
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+      UBSAN_OPTIONS=halt_on_error=1 \
+      ctest --test-dir build-asan --output-on-failure
+
 ## License ##
 
 THIS FILE IS PART OF THE OggVorbis SOFTWARE CODEC SOURCE CODE.

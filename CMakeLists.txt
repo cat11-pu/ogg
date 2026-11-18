@@ -8,6 +8,7 @@ project(ogg VERSION ${CMAKE_MATCH_1} LANGUAGES C)
 
 # Required modules
 include(GNUInstallDirs)
+include(CTest)
 include(CheckIncludeFiles)
 include(CMakePackageConfigHelpers)
 
@@ -194,6 +195,25 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_BINARY_DIR}/include
     )
     add_test(NAME test_framing COMMAND $<TARGET_FILE:test_framing>)
+
+    add_executable(test_malformed
+        src/test_malformed.c
+        src/test_ogg_common.c
+        src/test_ogg_common.h
+    )
+    target_link_libraries(test_malformed PRIVATE ogg)
+    target_include_directories(test_malformed PRIVATE src)
+    add_test(NAME test_malformed COMMAND $<TARGET_FILE:test_malformed>)
+
+    add_executable(test_valid_reference
+        src/test_valid_reference.c
+        src/test_ogg_common.c
+        src/test_ogg_common.h
+    )
+    target_link_libraries(test_valid_reference PRIVATE ogg)
+    target_include_directories(test_valid_reference PRIVATE src)
+    add_test(NAME test_valid_reference
+             COMMAND $<TARGET_FILE:test_valid_reference>)
 endif()
 
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
